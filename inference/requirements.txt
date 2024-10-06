@@ -1,10 +1,15 @@
+# Application and database
 fastapi==0.95.2
 uvicorn==0.22.0
 python-jose==3.3.0
 passlib[bcrypt]==1.7.4
 python-multipart==0.0.6
+pymongo==4.5.0
+# Image processing
 torch==2.0.1
 transformers==4.34.0
 Pillow==9.2.0
-pymongo==4.5.0
 numpy==1.24.4
+# Monitornig
+prometheus-fastapi-instrumentator==5.9.1
+prometheus-client==0.16.0
