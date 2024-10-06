@@ -1,11 +1,13 @@
 import torch
 from fastapi import FastAPI, Query, HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordBearer
-from transformers import AutoModelForImageClassification, AutoProcessor
+from transformers import AutoModelForImageClassification, AutoImageProcessor
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Summary
 from pymongo import MongoClient
 from gridfs import GridFS
+import mlflow
+import mlflow.pytorch
 from PIL import Image
 from jose import JWTError, jwt
 import io
@@ -32,7 +34,7 @@ fs = GridFS(db)
 # Load Hugging Face model and processor for resnet-50
 model_name = "microsoft/resnet-50"
 model = AutoModelForImageClassification.from_pretrained(model_name)
-processor = AutoProcessor.from_pretrained(model_name)
+processor = AutoImageProcessor.from_pretrained(model_name)
 
 # JWT settings
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -40,6 +42,9 @@ ALGORITHM = "HS256"
 
 # OAuth2 scheme for Bearer token in Authorization header
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# Mlflow settings
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
 
 # Helper function to decode JWT token
 def verify_token(token: str = Depends(oauth2_scheme)):
@@ -125,6 +130,12 @@ def predict(
         # Load the image from GridFS using the file_id
         image = load_image_from_gridfs(file_id)
 
+    # TODO: asynchronize the call by passing directly image in the query and making this function async
+    # declare in function param: image: UploadFile = File(...)
+    # and remove {collection_name}/{image_id} from the route
+    # image_data = await image.read()
+    # image = Image.open(io.BytesIO(image_data))
+
     # Measure time for preprocessing the image
     with PREPROCESS_TIME.time():
         # Preprocess the image for the model
@@ -143,4 +154,26 @@ def predict(
         "image_id": image_id,
         "predicted_class_idx": predicted_class_idx,
         "predicted_class_label": imagenet_labels[predicted_class_idx]
+    }
+
+
+# Route to log the current model to MLflow
+@app.post("/log_model")
+def log_model(
+    model_name: str = Query("resnet-50"), 
+    version: str = Query("1"),
+    token: str = Depends(verify_token)
+):
+    with mlflow.start_run():
+        # Log the model with MLflow
+        artifact_path = f"{model_name}_v{version}"
+        mlflow.pytorch.log_model(model, artifact_path=artifact_path)
+        mlflow.set_tag("version", version)
+        mlflow.log_param("model_name", model_name)
+        mlflow.log_param("pretrained", True)
+        print(f"Model version {version} logged to MLflow.")
+    return {
+        "status": "Model logged successfully",
+        "model_name": model_name,
+        "version": version
     }

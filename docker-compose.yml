@@ -61,9 +61,50 @@ services:
       - DATABASE_NAME=db_sg
       - MONGO_URI=mongodb://root:password@mongodb_sg:27017/
       - SECRET_KEY=_picks_and_shovels
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+  
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - application-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - application-network
+    volumes:
+      - grafana_data:/var/lib/grafana
+  
+  mlflow:
+    image: ghcr.io/mlflow/mlflow
+    container_name: mlflow
+    ports:
+      - "5001:5000"
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --default-artifact-root /mlflow/artifacts
+    networks:
+      - application-network
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+      - mlflow_data:/mlflow
 
 volumes:
   mongo_data:
+    driver: local
+  grafana_data:
+    driver: local
+  mlflow_artifacts:
+    driver: local
+  mlflow_data:
     driver: local
 
 networks:

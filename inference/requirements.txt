@@ -13,3 +13,5 @@ numpy==1.24.4
 # Monitornig
 prometheus-fastapi-instrumentator==5.9.1
 prometheus-client==0.16.0
+# Model versioning
+mlflow==2.16.2
