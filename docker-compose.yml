@@ -60,9 +60,27 @@ services:
     environment:
       - DATABASE_NAME=db_sg
       - MONGO_URI=mongodb://root:password@mongodb_sg:27017/
+      - PRED_COLLECTION_NAME=predictions
       - SECRET_KEY=_picks_and_shovels
       - MLFLOW_TRACKING_URI=http://mlflow:5000
-  
+    
+  feedback_loop:
+    build:
+      context: ./feedback_loop
+      dockerfile: Dockerfile
+    container_name: feedback_loop_api
+    ports:
+      - "8083:8083"
+    depends_on:
+      - mongodb
+    networks:
+      - application-network
+    environment:
+      - DATABASE_NAME=db_sg
+      - MONGO_URI=mongodb://root:password@mongodb_sg:27017/
+      - PRED_COLLECTION_NAME=predictions
+      - SECRET_KEY=_picks_and_shovels
+
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus

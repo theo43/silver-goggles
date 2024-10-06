@@ -13,6 +13,8 @@ from jose import JWTError, jwt
 import io
 import os
 import ast
+import datetime
+
 
 # FastAPI app initialization
 app = FastAPI()
@@ -149,11 +151,24 @@ def predict(
             predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
             predicted_class_idx = torch.argmax(predictions, dim=-1).item()
 
+    # Store prediction result in MongoDB
+    predicted_class_label = imagenet_labels[predicted_class_idx]
+    prediction_data = {
+        "image_id": image_id,
+        "collection_name": collection_name,
+        "predicted_class_idx": predicted_class_idx,
+        "predicted_class_label": predicted_class_label,
+        "timestamp": datetime.utcnow()
+    }
+    pred_collection = db[os.getenv("PRED_COLLECTION_NAME")]
+    pred_collection.insert_one(prediction_data)
+
     # Return the predicted class index
     return {
         "image_id": image_id,
         "predicted_class_idx": predicted_class_idx,
-        "predicted_class_label": imagenet_labels[predicted_class_idx]
+        "predicted_class_label": predicted_class_label,
+        "collection_name": collection_name,
     }
 
 
