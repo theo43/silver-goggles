@@ -8,9 +8,15 @@ from PIL import Image
 from jose import JWTError, jwt
 import io
 import os
+import ast
 
 # FastAPI app initialization
 app = FastAPI()
+
+# Load ImageNet labels from the JSON file - JSON format not respected so create python dict directly
+with open("/app/imagenet_labels.json", "r") as f:
+    file_content = f.read()
+imagenet_labels = ast.literal_eval(file_content)
 
 # MongoDB connection parameters from environment variables
 DATABASE_NAME = os.getenv("DATABASE_NAME")
@@ -103,4 +109,8 @@ def predict(
         predicted_class_idx = torch.argmax(predictions, dim=-1).item()
 
     # Return the predicted class index
-    return {"predicted_class_idx": predicted_class_idx}
+    return {
+        "image_id": image_id,
+        "predicted_class_idx": predicted_class_idx,
+        "predicted_class_label": imagenet_labels[predicted_class_idx]
+    }
