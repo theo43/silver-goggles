@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb_sg
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=db_sg
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=password  
+    volumes:
+      - mongo_data:/data/db
+      - ./database/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
+    networks:
+      - application-network
+  
+  authentication:
+    build:
+      context: ./authentication
+      dockerfile: Dockerfile
+    container_name: authentication_api
+    ports:
+      - "8080:8080"
+    networks:
+      - application-network
+    environment:
+      - SECRET_KEY=_picks_and_shovels
+
+  data_ingestion:
+    build:
+      context: data_ingestion/
+      dockerfile: Dockerfile
+    container_name: data_ingestion_api
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mongodb
+      - authentication
+    networks:
+      - application-network
+    environment:
+      - DATABASE_NAME=db_sg
+      - MONGO_URI=mongodb://root:password@mongodb_sg:27017/
+      - SECRET_KEY=_picks_and_shovels
+  
+  inference:
+    build:
+      context: inference/
+      dockerfile: Dockerfile
+    container_name: inference_api
+    ports:
+      - "8082:8082"
+    depends_on:
+      - mongodb
+      - authentication
+    networks:
+      - application-network
+    environment:
+      - DATABASE_NAME=db_sg
+      - MONGO_URI=mongodb://root:password@mongodb_sg:27017/
+      - SECRET_KEY=_picks_and_shovels
+
+volumes:
+  mongo_data:
+    driver: local
+
+networks:
+  application-network:
+    driver: bridge
