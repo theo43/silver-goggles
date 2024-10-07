@@ -175,9 +175,13 @@ def predict_on_id(
 @app.post("/predict")
 async def predict_on_image(
     image: UploadFile = File(...),
+    wait_time: float = Query(0.0),
     token: str = Depends(verify_token)
 ):
     start_time = time.time()
+
+    if wait_time > 0:
+        time.sleep(wait_time)
 
     # Read image file
     logger.info("Reading image file...")
@@ -192,22 +196,25 @@ async def predict_on_image(
 
     # Measure time for model inference
     with MODEL_INFERENCE_TIME.time():
+        start_model_inf_time = time.time()
         # Perform inference
         with torch.no_grad():
             logger.info("Performing inference...")
             outputs = model(image_tensor)
             predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
             predicted_class_idx = torch.argmax(predictions, dim=-1).item()
+        model_inf_time = time.time() - start_model_inf_time
 
     # Return the predicted class index and label
     predicted_class_label = imagenet_labels[predicted_class_idx]
 
     inference_time = time.time() - start_time
     INFERENCE_TIME.observe(inference_time)
-    
+
     return {
         "predicted_class_idx": predicted_class_idx,
-        "predicted_class_label": predicted_class_label
+        "predicted_class_label": predicted_class_label,
+        "model_inference_time": model_inf_time,
     }
 
 
