@@ -1,5 +1,5 @@
 import torch
-from fastapi import FastAPI, Query, HTTPException, status, Depends
+from fastapi import FastAPI, Query, HTTPException, status, Depends, File, UploadFile
 from fastapi.security import OAuth2PasswordBearer
 from transformers import AutoModelForImageClassification, AutoImageProcessor
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -14,6 +14,8 @@ import io
 import os
 import ast
 import datetime
+import logging
+import time
 
 
 # FastAPI app initialization
@@ -47,6 +49,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Mlflow settings
 mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
+
+# Logger setup
+logger = logging.getLogger("uvicorn")
 
 # Helper function to decode JWT token
 def verify_token(token: str = Depends(oauth2_scheme)):
@@ -107,10 +112,11 @@ def preprocess_image(image: Image):
     inputs = processor(images=[image], return_tensors="pt", padding=True)  # Batch of 1
     return inputs["pixel_values"]
 
+
 # Route for inference based on image_id from MongoDB
-@app.get("/predict/{collection_name}/{image_id}")
+@app.get("/predict_on_id/{collection_name}/{image_id}")
 @INFERENCE_TIME.time()  # Overall inference time
-def predict(
+def predict_on_id(
     collection_name: str,
     image_id: int,
     token: str = Depends(verify_token)
@@ -132,12 +138,6 @@ def predict(
         # Load the image from GridFS using the file_id
         image = load_image_from_gridfs(file_id)
 
-    # TODO: asynchronize the call by passing directly image in the query and making this function async
-    # declare in function param: image: UploadFile = File(...)
-    # and remove {collection_name}/{image_id} from the route
-    # image_data = await image.read()
-    # image = Image.open(io.BytesIO(image_data))
-
     # Measure time for preprocessing the image
     with PREPROCESS_TIME.time():
         # Preprocess the image for the model
@@ -158,7 +158,7 @@ def predict(
         "collection_name": collection_name,
         "predicted_class_idx": predicted_class_idx,
         "predicted_class_label": predicted_class_label,
-        "timestamp": datetime.utcnow()
+        "timestamp": datetime.datetime.now()
     }
     pred_collection = db[os.getenv("PRED_COLLECTION_NAME")]
     pred_collection.insert_one(prediction_data)
@@ -169,6 +169,45 @@ def predict(
         "predicted_class_idx": predicted_class_idx,
         "predicted_class_label": predicted_class_label,
         "collection_name": collection_name,
+    }
+
+
+@app.post("/predict")
+async def predict_on_image(
+    image: UploadFile = File(...),
+    token: str = Depends(verify_token)
+):
+    start_time = time.time()
+
+    # Read image file
+    logger.info("Reading image file...")
+    image_data = await image.read()
+    image = Image.open(io.BytesIO(image_data))
+
+    # Measure time for preprocessing the image
+    with PREPROCESS_TIME.time():
+        # Preprocess the image for the model
+        logger.info("Preprocessing the image...")
+        image_tensor = preprocess_image(image)
+
+    # Measure time for model inference
+    with MODEL_INFERENCE_TIME.time():
+        # Perform inference
+        with torch.no_grad():
+            logger.info("Performing inference...")
+            outputs = model(image_tensor)
+            predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
+            predicted_class_idx = torch.argmax(predictions, dim=-1).item()
+
+    # Return the predicted class index and label
+    predicted_class_label = imagenet_labels[predicted_class_idx]
+
+    inference_time = time.time() - start_time
+    INFERENCE_TIME.observe(inference_time)
+    
+    return {
+        "predicted_class_idx": predicted_class_idx,
+        "predicted_class_label": predicted_class_label
     }
 
 
