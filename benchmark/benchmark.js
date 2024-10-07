@@ -110,7 +110,7 @@ function storeResults(resultFilePath, imageName, resultData) {
     console.log(`Result for ${imageName} saved to ${resultFilePath}`);
 }
 
-// Benchmark function
+// Benchmark function that sends images concurrently
 async function benchmark(waitTime) {
     // Get the authentication token
     const token = await getAuthToken();
@@ -130,7 +130,8 @@ async function benchmark(waitTime) {
 
     console.log(`Starting benchmark for ${totalFiles} images with wait_time=${waitTime} seconds...`);
 
-    for (const file of files) {
+    // Create a list of promises to send all images concurrently
+    const promises = files.map(async (file) => {
         const imagePath = path.join(imageDir, file);
         const startTime = Date.now();  // Start measuring total request time
 
@@ -147,14 +148,20 @@ async function benchmark(waitTime) {
         }
 
         console.log(`Processed ${file}: ${result.success ? 'Success' : 'Failed'} (Total Time: ${timeTaken} ms, Model Inference Time: ${result.data ? (result.data.model_inference_time * 1000).toFixed(2) : 'N/A'} ms)`);
-    }
+    });
 
-    // Calculate success rate and total time taken
+    // Wait for all promises (image uploads) to complete
+    await Promise.all(promises);
+
+    // Calculate success rate, total time, and average time per image
     const successRate = (successCount / totalFiles) * 100;
+    const averageTimePerImage = totalFiles > 0 ? (totalTime / totalFiles) : 0;
+
     console.log(`\nBenchmark Complete!`);
     console.log(`Total Files: ${totalFiles}`);
-    console.log(`Success Rate: ${successRate.toFixed(2)}%`);
+    console.log(`Success Rate: ${successRate.toFixed(1)}%`);
     console.log(`Total Time: ${totalTime / 1000} seconds`);
+    console.log(`Average Total Time per Image: ${averageTimePerImage.toFixed(0) / 1000} seconds`);
 }
 
 // Run the benchmark with the passed wait time
